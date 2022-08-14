@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 import python_weather
-import yaml
+from tiny_storage import Unit
 
 
 def detect_rain(weather):
@@ -16,46 +16,32 @@ def detect_rain(weather):
 
 async def main():
     async with python_weather.Client(format=python_weather.METRIC) as client:
-        if sys.platform.startswith("linux"):
-            config_path = os.getenv("HOME") / Path('.butler.yaml')
-        else:
-            config_path = os.getenv("APPDATA") / Path('butler/butler.yaml')
+        config = Unit('butler')
 
-        if not config_path.exists():
-            config = {}
-        else:
-            config = yaml.safe_load(config_path.read_text())
+        weather_future = client.get(config('city').put(lambda: input('What city are you in right now?\n')))
 
-        if 'city' not in config:
-            config['city'] = input('What city are you in right now?\n')
-
-        weather_future = client.get("New-Orleans")
-
-        if 'username' not in config:
-            config['username'] = input('How would you like me to call you?\n')
-
-        print(", ".join([config.get('greeting', 'Welcome home'), config['username']]))
+        print(", ".join([
+            config('greeting').pull('Welcome home'),
+            config('username').put(lambda: input('How would you like me to call you?\n'))
+        ]))
 
         weather = await weather_future
 
         kind_of_weather = weather.current.type.name
 
-        print(f"The weather in {config['city']} is ", end="")
-        if kind_of_weather in config.get('weather', {}).get('bad', []):
+        print(f"The weather in {config('city').pull()} is ", end="")
+        if kind_of_weather in config('weather.bad').pull([]):
             print("terrible, I'm sorry.")
-        elif kind_of_weather in config.get('weather', {}).get('good', []):
+        elif kind_of_weather in config('weather.good').pull([]):
             print("nice, it could be a chance for a good walk.")
         else:
             print(kind_of_weather.lower() + ".")
 
-        if weather.current.temperature >= config.get('hot_temperature', 30):
+        if weather.current.temperature >= config('hot_temperature').pull(30):
             print("It is hot today, dress lightly.")
 
         if detect_rain(weather):
             print("And there could be a rain, I suggest taking an umbrella.")
-
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(yaml.safe_dump(config))
 
 
 if __name__ == '__main__':
